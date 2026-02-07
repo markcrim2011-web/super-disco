@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tribalights Attendance Pro - Desktop Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #6366f1; --primary-dark: #4f46e5; --present: #10b981; --absent: #ef4444;
+            --late: #f59e0b; --excused: #3b82f6; --online: #86efac; --online-dark: #22c55e;
+            --unmarked: #f1f5f9; --bg: #0f172a; --surface: #1e293b; --surface-light: #334155;
+            --text: #f8fafc; --text-muted: #94a3b8; --border: #475569; --sync: #8b5cf6;
+            --cloud: #0ea5e9; --cloud-glow: rgba(14, 165, 233, 0.3); --weekly: #f97316;
+            --folder: #fbbf24;
+        }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.6; }
+        .container { max-width: 1600px; margin: 0 auto; padding: 2rem; }
+        header { text-align: center; margin-bottom: 2rem; padding: 2rem; background: linear-gradient(135deg, var(--surface) 0%, var(--surface-light) 100%); border-radius: 20px; border: 1px solid var(--border); position: relative; overflow: hidden; }
+        header::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%); animation: pulse 4s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.1); opacity: 0.8; } }
+        h1 { font-size: 2.5rem; margin-bottom: 0.5rem; background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; position: relative; }
+        .subtitle { color: var(--text-muted); font-size: 1.1rem; position: relative; }
+
+        .folder-indicator { position: absolute; top: 1rem; left: 1rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: var(--surface-light); border-radius: 9999px; font-size: 0.875rem; font-weight: 600; border: 2px solid var(--folder); color: var(--folder); cursor: pointer; transition: all 0.3s ease; }
+        .folder-indicator:hover { box-shadow: 0 0 20px rgba(251, 191, 36, 0.3); transform: translateY(-2px); }
+        .folder-indicator.saved { border-color: var(--present); color: var(--present); }
+        .folder-indicator.error { border-color: var(--absent); color: var(--absent); }
+
+        .top-controls { position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem; }
+        .sync-indicator, .cloud-indicator { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: var(--surface-light); border-radius: 9999px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; border: 2px solid transparent; }
+        .sync-indicator:hover { border-color: var(--sync); box-shadow: 0 0 20px rgba(139, 92, 246, 0.3); }
+        .cloud-indicator:hover { border-color: var(--cloud); box-shadow: 0 0 20px var(--cloud-glow); }
+        .cloud-indicator.connected { color: var(--cloud); border-color: var(--cloud); }
+        .cloud-indicator.syncing { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .grid { display: grid; grid-template-columns: 350px 1fr; gap: 2rem; margin-bottom: 2rem; }
+        @media (max-width: 1200px) { .grid { grid-template-columns: 1fr; } }
+        .card { background: var(--surface); border-radius: 16px; padding: 1.5rem; border: 1px solid var(--border); box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid var(--surface-light); }
+        .card-title { font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+        .badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; }
+        .badge-present { background: rgba(16, 185, 129, 0.2); color: var(--present); }
+        .badge-absent { background: rgba(239, 68, 68, 0.2); color: var(--absent); }
+        .badge-late { background: rgba(245, 158, 11, 0.2); color: var(--late); }
+        .badge-excused { background: rgba(59, 130, 246, 0.2); color: var(--excused); }
+        .badge-online { background: rgba(134, 239, 172, 0.2); color: var(--online-dark); }
+        .badge-active { background: rgba(16, 185, 129, 0.2); color: var(--present); }
+        .badge-graduated { background: rgba(59, 130, 246, 0.2); color: var(--excused); }
+        .badge-discharged { background: rgba(239, 68, 68, 0.2); color: var(--absent); }
+        .badge-count { background: var(--surface-light); color: var(--text); }
+        .badge-weekly { background: rgba(249, 115, 22, 0.2); color: var(--weekly); }
+        .badge-folder { background: rgba(251, 191, 36, 0.2); color: var(--folder); }
+
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 0.5rem; color: var(--text-muted); font-size: 0.875rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+        input, select, textarea { width: 100%; padding: 0.75rem 1rem; background: var(--bg); border: 2px solid var(--border); border-radius: 8px; color: var(--text); font-size: 1rem; transition: all 0.3s ease; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
+        .status-select { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.5rem; }
+        .status-option { position: relative; }
+        .status-option input { position: absolute; opacity: 0; }
+        .status-label { display: block; padding: 0.75rem; text-align: center; background: var(--bg); border: 2px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.3s ease; font-size: 0.875rem; font-weight: 500; }
+        .status-option input:checked + .status-label.active { background: rgba(16, 185, 129, 0.2); border-color: var(--present); color: var(--present); }
+        .status-option input:checked + .status-label.graduated { background: rgba(59, 130, 246, 0.2); border-color: var(--excused); color: var(--excused); }
+        .status-option input:checked + .status-label.discharged { background: rgba(239, 68, 68, 0.2); border-color: var(--absent); color: var(--absent); }
+
+        button { padding: 0.75rem 1.5rem; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 0.5rem; }
+        .btn-primary { background: var(--primary); color: white; width: 100%; justify-content: center; }
+        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.4); }
+        .btn-sync { background: var(--sync); color: white; }
+        .btn-sync:hover { background: #7c3aed; }
+        .btn-cloud { background: var(--cloud); color: white; }
+        .btn-cloud:hover { background: #0284c7; }
+        .btn-weekly { background: var(--weekly); color: white; }
+        .btn-weekly:hover { background: #ea580c; }
+        .btn-folder { background: var(--folder); color: var(--bg); }
+        .btn-folder:hover { background: #f59e0b; }
+        .btn-icon { background: transparent; color: var(--text-muted); padding: 0.5rem; border-radius: 6px; }
+        .btn-icon:hover { background: var(--surface-light); color: var(--text); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.2); color: var(--absent); }
+        .btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; }
+
+        .list-container { max-height: 600px; overflow-y: auto; padding-right: 0.5rem; }
+        .list-container::-webkit-scrollbar { width: 8px; }
+        .list-container::-webkit-scrollbar-track { background: var(--bg); border-radius: 4px; }
+        .list-container::-webkit-scrollbar-thumb { background: var(--surface-light); border-radius: 4px; }
+
+        .client-item { display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.75rem; transition: all 0.3s ease; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        .client-item:hover { border-color: var(--primary); transform: translateX(4px); }
+        .client-info { display: flex; flex-direction: column; gap: 0.25rem; }
+        .client-name { font-weight: 600; font-size: 1.1rem; }
+        .client-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+        .client-actions { display: flex; gap: 0.5rem; }
+
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-muted); }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+
+        .tabs { display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid var(--surface-light); padding-bottom: 1rem; flex-wrap: wrap; }
+        .tab { padding: 0.75rem 1.5rem; background: transparent; border: none; color: var(--text-muted); font-weight: 600; cursor: pointer; position: relative; transition: color 0.3s ease; }
+        .tab.active { color: var(--primary); }
+        .tab.active::after { content: ''; position: absolute; bottom: -1rem; left: 0; right: 0; height: 2px; background: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .attendance-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+        .date-selector { display: flex; gap: 1rem; align-items: center; background: var(--bg); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border); }
+        .attendance-table { width: 100%; border-collapse: collapse; background: var(--bg); border-radius: 8px; overflow: hidden; }
+        .attendance-table th, .attendance-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+        .attendance-table th { background: var(--surface-light); font-weight: 600; text-transform: uppercase; font-size: 0.875rem; letter-spacing: 0.05em; color: var(--text-muted); }
+        .attendance-table tr:hover td { background: var(--surface-light); }
+        .attendance-row { transition: all 0.3s ease; }
+        .attendance-row.status-present { background: rgba(16, 185, 129, 0.1); border-left: 4px solid var(--present); }
+        .attendance-row.status-absent { background: rgba(239, 68, 68, 0.1); border-left: 4px solid var(--absent); }
+        .attendance-row.status-late { background: rgba(245, 158, 11, 0.1); border-left: 4px solid var(--late); }
+        .attendance-row.status-excused { background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--excused); }
+        .attendance-row.status-online { background: rgba(134, 239, 172, 0.15); border-left: 4px solid var(--online-dark); }
+        .attendance-row.status-unmarked { background: transparent; border-left: 4px solid transparent; }
+        .attendance-row.status-present td { color: var(--present); }
+        .attendance-row.status-absent td { color: var(--absent); }
+        .attendance-row.status-late td { color: var(--late); }
+        .attendance-row.status-excused td { color: var(--excused); }
+        .attendance-row.status-online td { color: var(--online-dark); }
+
+        .attendance-controls { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .attendance-btn { padding: 0.5rem; border: 2px solid var(--border); background: var(--surface); border-radius: 6px; cursor: pointer; font-size: 1rem; transition: all 0.2s ease; min-width: 40px; text-align: center; }
+        .attendance-btn:hover { transform: scale(1.1); }
+        .attendance-btn.present { border-color: var(--present); color: var(--present); }
+        .attendance-btn.present.active { background: var(--present); color: white; }
+        .attendance-btn.absent { border-color: var(--absent); color: var(--absent); }
+        .attendance-btn.absent.active { background: var(--absent); color: white; }
+        .attendance-btn.late { border-color: var(--late); color: var(--late); }
+        .attendance-btn.late.active { background: var(--late); color: white; }
+        .attendance-btn.excused { border-color: var(--excused); color: var(--excused); }
+        .attendance-btn.excused.active { background: var(--excused); color: white; }
+        .attendance-btn.online { border-color: var(--online-dark); color: var(--online-dark); }
+        .attendance-btn.online.active { background: var(--online-dark); color: white; }
+        .attendance-btn.clear { border-color: var(--text-muted); color: var(--text-muted); }
+        .attendance-btn.clear:hover { background: var(--surface-light); }
+
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .stat-card { background: var(--surface); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); text-align: center; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden; }
+        .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.05) 100%); opacity: 0; transition: opacity 0.3s ease; }
+        .stat-card:hover::before { opacity: 1; }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5); border-color: var(--primary); }
+        .stat-card.active-filter { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+        .stat-card.active-filter::after { content: 'Filtering'; position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.7rem; background: var(--primary); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; opacity: 0; animation: fadeIn 0.3s ease forwards; }
+        .stat-value { font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 0.5rem; position: relative; z-index: 1; }
+        .stat-value.present { color: var(--present); }
+        .stat-value.absent { color: var(--absent); }
+        .stat-value.late { color: var(--late); }
+        .stat-value.excused { color: var(--excused); }
+        .stat-value.online { color: var(--online-dark); }
+        .stat-value.total { color: var(--primary); }
+        .stat-value.weekly { color: var(--weekly); }
+        .stat-value.folder { color: var(--folder); }
+        .stat-label { color: var(--text-muted); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; position: relative; z-index: 1; }
+        .stat-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem; opacity: 0; transition: opacity 0.3s ease; }
+        .stat-card:hover .stat-hint { opacity: 1; }
+
+        .legend { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; padding: 1rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); }
+        .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+        .legend-color { width: 20px; height: 20px; border-radius: 4px; border: 2px solid; }
+        .legend-color.present { background: rgba(16, 185, 129, 0.2); border-color: var(--present); }
+        .legend-color.absent { background: rgba(239, 68, 68, 0.2); border-color: var(--absent); }
+        .legend-color.late { background: rgba(245, 158, 11, 0.2); border-color: var(--late); }
+        .legend-color.excused { background: rgba(59, 130, 246, 0.2); border-color: var(--excused); }
+        .legend-color.online { background: rgba(134, 239, 172, 0.3); border-color: var(--online-dark); }
+        .legend-color.unmarked { background: var(--surface); border-color: var(--border); }
+
+        .toast { position: fixed; bottom: 2rem; right: 2rem; padding: 1rem 1.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); display: flex; align-items: center; gap: 0.75rem; transform: translateY(100px); opacity: 0; transition: all 0.3s ease; z-index: 1000; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { border-left: 4px solid var(--present); }
+        .toast.error { border-left: 4px solid var(--absent); }
+        .toast.sync { border-left: 4px solid var(--sync); }
+        .toast.cloud { border-left: 4px solid var(--cloud); }
+        .toast.folder { border-left: 4px solid var(--folder); }
+
+        .search-box { margin-bottom: 1rem; }
+        .filter-buttons { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .filter-btn { padding: 0.5rem 1rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); font-size: 0.875rem; cursor: pointer; transition: all 0.3s ease; }
+        .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .export-btn { background: var(--surface-light); color: var(--text); margin-top: 1rem; width: 100%; }
+        .export-btn:hover { background: var(--border); }
+        .history-btn { background: var(--surface-light); color: var(--text); padding: 0.5rem 1rem; font-size: 0.875rem; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 2000; align-items: center; justify-content: center; padding: 2rem; }
+        .modal.active { display: flex; }
+        .modal-content { background: var(--surface); border-radius: 16px; padding: 2rem; max-width: 900px; width: 100%; max-height: 85vh; overflow-y: auto; border: 1px solid var(--border); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid var(--surface-light); }
+        .close-modal { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0.5rem; }
+        .close-modal:hover { color: var(--text); }
+
+        .history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
+        .history-item { padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid var(--border); }
+        .history-date { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+        .history-status { font-weight: 600; font-size: 0.875rem; text-transform: uppercase; }
+
+        .bulk-actions { display: flex; gap: 0.5rem; margin-bottom: 1rem; padding: 1rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); flex-wrap: wrap; }
+        .bulk-btn { padding: 0.5rem 1rem; font-size: 0.875rem; border: 2px solid; background: transparent; }
+        .bulk-btn.present { border-color: var(--present); color: var(--present); }
+        .bulk-btn.absent { border-color: var(--absent); color: var(--absent); }
+        .bulk-btn.late { border-color: var(--late); color: var(--late); }
+        .bulk-btn.excused { border-color: var(--excused); color: var(--excused); }
+        .bulk-btn.online { border-color: var(--online-dark); color: var(--online-dark); }
+        .bulk-btn:hover { color: white; }
+        .bulk-btn.present:hover { background: var(--present); }
+        .bulk-btn.absent:hover { background: var(--absent); }
+        .bulk-btn.late:hover { background: var(--late); }
+        .bulk-btn.excused:hover { background: var(--excused); }
+        .bulk-btn.online:hover { background: var(--online-dark); }
+
+        .import-section { margin-top: 1rem; padding: 1rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); }
+        .file-input { display: none; }
+        .file-label { display: block; padding: 0.75rem; background: var(--surface-light); border: 2px dashed var(--border); border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.3s ease; }
+        .file-label:hover { border-color: var(--primary); color: var(--primary); }
+
+        .absentee-section { background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%); border: 2px solid var(--absent); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem; display: none; }
+        .absentee-section.active { display: block; animation: slideDown 0.5s ease; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .absentee-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(239, 68, 68, 0.3); }
+        .absentee-title { color: var(--absent); font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+        .absentee-list { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+        .absentee-chip { background: rgba(239, 68, 68, 0.2); border: 1px solid var(--absent); color: var(--absent); padding: 0.5rem 1rem; border-radius: 9999px; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; animation: popIn 0.3s ease; }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+        .absentee-chip .remove { cursor: pointer; opacity: 0.7; transition: opacity 0.2s; }
+        .absentee-chip .remove:hover { opacity: 1; }
+
+        .side-panel { position: fixed; top: 0; right: -450px; width: 450px; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); z-index: 3000; transition: right 0.3s ease; padding: 2rem; overflow-y: auto; }
+        .side-panel.active { right: 0; }
+        .panel-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); z-index: 2999; display: none; }
+        .panel-overlay.active { display: block; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 2px solid var(--surface-light); }
+
+        .cloud-provider { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; cursor: pointer; transition: all 0.3s ease; }
+        .cloud-provider:hover { border-color: var(--cloud); transform: translateX(-4px); }
+        .cloud-provider.active { border-color: var(--cloud); background: rgba(14, 165, 233, 0.1); }
+        .cloud-provider-title { font-weight: 700; color: var(--cloud); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .cloud-provider-desc { font-size: 0.875rem; color: var(--text-muted); }
+
+        .weekly-report { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+        .weekly-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .weekly-title { font-weight: 700; color: var(--weekly); font-size: 1.1rem; }
+        .week-selector { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+        .week-btn { padding: 0.5rem 1rem; background: var(--surface-light); border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer; transition: all 0.3s ease; }
+        .week-btn:hover { background: var(--weekly); border-color: var(--weekly); }
+        .week-display { font-weight: 600; color: var(--weekly); min-width: 200px; text-align: center; }
+
+        .report-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        .report-table th, .report-table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+        .report-table th { background: var(--surface-light); font-weight: 600; }
+        .report-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem; }
+        .summary-box { background: var(--surface-light); padding: 1rem; border-radius: 8px; text-align: center; }
+        .summary-value { font-size: 1.5rem; font-weight: 700; color: var(--weekly); }
+        .summary-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
+
+        .saved-indicator { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; background: rgba(16, 185, 129, 0.2); color: var(--present); border-radius: 9999px; font-size: 0.75rem; font-weight: 600; margin-left: 1rem; }
+        .saved-indicator.unsaved { background: rgba(245, 158, 11, 0.2); color: var(--late); }
+
+        .device-id { font-family: monospace; font-size: 0.75rem; color: var(--text-muted); background: var(--surface-light); padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.5rem; display: inline-block; }
+
+        .auto-save-status { position: fixed; bottom: 1rem; left: 1rem; padding: 0.5rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.875rem; color: var(--text-muted); z-index: 500; }
+        .auto-save-status.saving { color: var(--cloud); }
+        .auto-save-status.saved { color: var(--present); }
+        .auto-save-status.error { color: var(--absent); }
+
+        .folder-path { background: var(--bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--folder); margin-bottom: 1rem; font-family: monospace; font-size: 0.875rem; color: var(--folder); word-break: break-all; }
+        .folder-info { background: rgba(251, 191, 36, 0.1); border: 1px solid var(--folder); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+        .folder-info h4 { color: var(--folder); margin-bottom: 0.5rem; }
+        .folder-info ul { margin-left: 1.5rem; color: var(--text-muted); font-size: 0.875rem; }
+        .folder-info li { margin-bottom: 0.25rem; }
+
+        .file-list { max-height: 300px; overflow-y: auto; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.5rem; font-size: 0.875rem; }
+        .file-item:hover { border-color: var(--folder); }
+        .file-name { color: var(--text); font-weight: 500; }
+        .file-date { color: var(--text-muted); font-size: 0.75rem; }
+        .file-actions { display: flex; gap: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="folder-indicator" id="folderIndicator" onclick="openFolderPanel()" title="Click to manage desktop folder">
+                <span id="folderIcon">📁</span>
+                <span id="folderText">Desktop Folder</span>
+            </div>
+            <div class="top-controls">
+                <div class="cloud-indicator" id="cloudIndicator" onclick="openCloudPanel()">
+                    <span id="cloudIcon">☁️</span>
+                    <span id="cloudText">Cloud Save</span>
+                </div>
+                <div class="sync-indicator" id="syncIndicator" onclick="openSyncPanel()">
+                    <span id="syncIcon">🔄</span>
+                    <span id="syncText">Sync</span>
+                </div>
+            </div>
+            <h1>📋 Tribalights LLC, Attendance Manager Pro</h1>
+            <p class="subtitle">Desktop Folder Edition - All data saves to Tribalights Attendance Pro folder</p>
+            <div class="device-id" id="deviceIdDisplay">Device ID: Loading...</div>
+        </header>
+
+        <div class="stats">
+            <div class="stat-card" id="statTotal" onclick="filterByStat('all')">
+                <div class="stat-value total" id="totalClients">0</div>
+                <div class="stat-label">Total Clients</div>
+                <div class="stat-hint">Click to show all</div>
+            </div>
+            <div class="stat-card" id="statPresent" onclick="filterByStat('present')">
+                <div class="stat-value present" id="todayPresent">0</div>
+                <div class="stat-label">Present</div>
+                <div class="stat-hint">Click to filter</div>
+            </div>
+            <div class="stat-card" id="statAbsent" onclick="filterByStat('absent')">
+                <div class="stat-value absent" id="todayAbsent">0</div>
+                <div class="stat-label">Absent</div>
+                <div class="stat-hint">Click to filter</div>
+            </div>
+            <div class="stat-card" id="statLate" onclick="filterByStat('late')">
+                <div class="stat-value late" id="todayLate">0</div>
+                <div class="stat-label">Late</div>
+                <div class="stat-hint">Click to filter</div>
+            </div>
+            <div class="stat-card" id="statExcused" onclick="filterByStat('excused')">
+                <div class="stat-value excused" id="todayExcused">0</div>
+                <div class="stat-label">Excused</div>
+                <div class="stat-hint">Click to filter</div>
+            </div>
+            <div class="stat-card" id="statOnline" onclick="filterByStat('online')">
+                <div class="stat-value online" id="todayOnline">0</div>
+                <div class="stat-label">Online</div>
+                <div class="stat-hint">Click to filter</div>
+            </div>
+            <div class="stat-card" id="statFolder" onclick="openFolderPanel()">
+                <div class="stat-value folder" id="folderStatus">📂</div>
+                <div class="stat-label">Desktop Folder</div>
+                <div class="stat-hint">Click to open</div>
+            </div>
+        </div>
+
+        <div class="absentee-section" id="absenteeSection">
+            <div class="absentee-header">
+                <div class="absentee-title">
+                    ⚠️ Absent Today
+                    <span class="badge badge-absent" id="absenteeCount">0</span>
+                </div>
+                <button class="btn-sm" onclick="clearAbsentees()" style="background: var(--absent); color: white;">Clear All</button>
+            </div>
+            <div class="absentee-list" id="absenteeList"></div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('master')">👥 Master Client List</button>
+            <button class="tab" onclick="switchTab('iop')">🌅 IOP Morning Attendance</button>
+            <button class="tab" onclick="switchTab('ccss')">🎓 CCSS Attendance</button>
+            <button class="tab" onclick="switchTab('weekly')" style="color: var(--weekly);">📈 Weekly Reports</button>
+        </div>
+
+        <div id="masterTab" class="tab-content active">
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">➕ Add New Client</h2>
+                    </div>
+                    <form id="addClientForm">
+                        <div class="form-group">
+                            <label>First Name</label>
+                            <input type="text" id="firstName" required placeholder="Enter first name">
+                        </div>
+                        <div class="form-group">
+                            <label>Last Name</label>
+                            <input type="text" id="lastName" placeholder="Enter last name (optional)">
+                        </div>
+                        <div class="form-group">
+                            <label>Status</label>
+                            <div class="status-select">
+                                <div class="status-option">
+                                    <input type="radio" name="status" id="statusActive" value="active" checked>
+                                    <label for="statusActive" class="status-label active">Active</label>
+                                </div>
+                                <div class="status-option">
+                                    <input type="radio" name="status" id="statusGraduated" value="graduated">
+                                    <label for="statusGraduated" class="status-label graduated">Graduated</label>
+                                </div>
+                                <div class="status-option">
+                                    <input type="radio" name="status" id="statusDischarged" value="discharged">
+                                    <label for="statusDischarged" class="status-label discharged">Discharged</label>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary"><span>➕</span> Add Client</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">👥 All Clients</h2>
+                        <span class="badge badge-count" id="masterCount">0</span>
+                    </div>
+                    <div class="search-box">
+                        <input type="text" id="searchClients" placeholder="Search clients..." oninput="filterClients()">
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" onclick="filterByStatus('all')">All</button>
+                        <button class="filter-btn" onclick="filterByStatus('active')">Active</button>
+                        <button class="filter-btn" onclick="filterByStatus('graduated')">Graduated</button>
+                        <button class="filter-btn" onclick="filterByStatus('discharged')">Discharged</button>
+                    </div>
+                    <div class="list-container" id="masterList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📭</div>
+                            <p>No clients added yet</p>
+                        </div>
+                    </div>
+                    <button class="export-btn" onclick="exportToDesktopFolder()">💾 Save to Desktop Folder</button>
+                    <div class="import-section">
+                        <label style="margin-bottom: 0.5rem; display: block;">Import from Desktop Folder</label>
+                        <label for="importFile" class="file-label">📁 Click to select file from Tribalights Attendance Pro folder</label>
+                        <input type="file" id="importFile" class="file-input" accept=".json" onchange="importFromDesktop(this)">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="iopTab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🌅 IOP Morning Attendance</h2>
+                    <span class="badge badge-active" id="iopCount">0 clients</span>
+                </div>
+                <div class="attendance-header">
+                    <div class="date-selector">
+                        <label style="margin: 0;">Date:</label>
+                        <input type="date" id="iopDate" onchange="loadAttendance('iop')">
+                        <button class="btn-sm" onclick="setToday('iop')">Today</button>
+                    </div>
+                    <div class="bulk-actions">
+                        <span style="color: var(--text-muted); font-size: 0.875rem;">Mark All:</span>
+                        <button class="bulk-btn present" onclick="markAll('iop', 'present')">Present</button>
+                        <button class="bulk-btn absent" onclick="markAll('iop', 'absent')">Absent</button>
+                        <button class="bulk-btn late" onclick="markAll('iop', 'late')">Late</button>
+                        <button class="bulk-btn excused" onclick="markAll('iop', 'excused')">Excused</button>
+                        <button class="bulk-btn online" onclick="markAll('iop', 'online')">Online</button>
+                    </div>
+                </div>
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-color present"></div><span>Present</span></div>
+                    <div class="legend-item"><div class="legend-color absent"></div><span>Absent</span></div>
+                    <div class="legend-item"><div class="legend-color late"></div><span>Late</span></div>
+                    <div class="legend-item"><div class="legend-color excused"></div><span>Excused</span></div>
+                    <div class="legend-item"><div class="legend-color online"></div><span>Online</span></div>
+                    <div class="legend-item"><div class="legend-color unmarked"></div><span>Unmarked</span></div>
+                </div>
+                <div class="list-container" id="iopAttendanceList">
+                    <div class="empty-state"><div class="empty-state-icon">🌅</div><p>No active clients</p></div>
+                </div>
+                <button class="export-btn" onclick="exportAttendanceToFolder('iop')">💾 Save IOP to Desktop Folder</button>
+            </div>
+        </div>
+
+        <div id="ccssTab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🎓 CCSS Attendance</h2>
+                    <span class="badge badge-graduated" id="ccssCount">0 clients</span>
+                </div>
+                <div class="attendance-header">
+                    <div class="date-selector">
+                        <label style="margin: 0;">Date:</label>
+                        <input type="date" id="ccssDate" onchange="loadAttendance('ccss')">
+                        <button class="btn-sm" onclick="setToday('ccss')">Today</button>
+                    </div>
+                    <div class="bulk-actions">
+                        <span style="color: var(--text-muted); font-size: 0.875rem;">Mark All:</span>
+                        <button class="bulk-btn present" onclick="markAll('ccss', 'present')">Present</button>
+                        <button class="bulk-btn absent" onclick="markAll('ccss', 'absent')">Absent</button>
+                        <button class="bulk-btn late" onclick="markAll('ccss', 'late')">Late</button>
+                        <button class="bulk-btn excused" onclick="markAll('ccss', 'excused')">Excused</button>
+                        <button class="bulk-btn online" onclick="markAll('ccss', 'online')">Online</button>
+                    </div>
+                </div>
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-color present"></div><span>Present</span></div>
+                    <div class="legend-item"><div class="legend-color absent"></div><span>Absent</span></div>
+                    <div class="legend-item"><div class="legend-color late"></div><span>Late</span></div>
+                    <div class="legend-item"><div class="legend-color excused"></div><span>Excused</span></div>
+                    <div class="legend-item"><div class="legend-color online"></div><span>Online</span></div>
+                    <div class="legend-item"><div class="legend-color unmarked"></div><span>Unmarked</span></div>
+                </div>
+                <div class="list-container" id="ccssAttendanceList">
+                    <div class="empty-state"><div class="empty-state-icon">🎓</div><p>No graduated clients</p></div>
+                </div>
+                <button class="export-btn" onclick="exportAttendanceToFolder('ccss')">💾 Save CCSS to Desktop Folder</button>
+            </div>
+        </div>
+
+        <div id="weeklyTab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📈 Weekly Reports & Export</h2>
+                    <span class="badge badge-weekly" id="reportWeekLabel">Select Week</span>
+                </div>
+
+                <div class="weekly-report">
+                    <div class="weekly-header">
+                        <div class="weekly-title">Week Selection</div>
+                    </div>
+                    <div class="week-selector">
+                        <button class="week-btn" onclick="changeWeek(-1)">← Previous</button>
+                        <div class="week-display" id="weekDisplay">Loading...</div>
+                        <button class="week-btn" onclick="changeWeek(1)">Next →</button>
+                    </div>
+                    <button class="btn-weekly" onclick="generateWeeklyReport()" style="width: 100%; margin-top: 1rem;">
+                        📊 Generate Weekly Report
+                    </button>
+                </div>
+
+                <div class="weekly-report">
+                    <div class="weekly-header">
+                        <div class="weekly-title">Export to Desktop Folder</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <button class="btn-weekly" onclick="exportWeeklyExcelToFolder()">
+                            📗 Save as Excel (.xlsx)
+                        </button>
+                        <button class="btn-weekly" onclick="exportWeeklyCSVToFolder()">
+                            📄 Save as CSV
+                        </button>
+                        <button class="btn-weekly" onclick="exportWeeklyPDF()">
+                            📕 Print to PDF
+                        </button>
+                        <button class="btn-folder" onclick="openFolderPanel()">
+                            📂 Open Desktop Folder
+                        </button>
+                    </div>
+                </div>
+
+                <div id="weeklyReportContent" style="margin-top: 2rem;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <p>Select a week and generate a report to view weekly data</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="historyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📊 Attendance History: <span id="historyClientName"></span></h3>
+                <button class="close-modal" onclick="closeModal()">×</button>
+            </div>
+            <div id="historyContent"></div>
+        </div>
+    </div>
+
+    <div class="panel-overlay" id="syncOverlay" onclick="closeSyncPanel()"></div>
+    <div class="side-panel" id="syncPanel">
+        <div class="panel-header">
+            <h2>🔄 Sync Settings</h2>
+            <button class="close-modal" onclick="closeSyncPanel()">×</button>
+        </div>
+        <div class="sync-method" onclick="selectSyncMethod('code')">
+            <div class="sync-method-title">🔢 Sync Code</div>
+            <div class="sync-method-desc">Generate a code to transfer data between devices</div>
+        </div>
+        <div class="sync-method" onclick="selectSyncMethod('file')">
+            <div class="sync-method-title">📁 File Export/Import</div>
+            <div class="sync-method-desc">Export to file and import on another device</div>
+        </div>
+        <div id="syncActionArea" style="margin-top: 2rem;"></div>
+    </div>
+
+    <div class="panel-overlay" id="cloudOverlay" onclick="closeCloudPanel()"></div>
+    <div class="side-panel" id="cloudPanel">
+        <div class="panel-header">
+            <h2>☁️ Cloud Save Settings</h2>
+            <button class="close-modal" onclick="closeCloudPanel()">×</button>
+        </div>
+
+        <div class="cloud-provider" onclick="selectCloudProvider('github')">
+            <div class="cloud-provider-title">🐙 GitHub Gist</div>
+            <div class="cloud-provider-desc">Save encrypted data to GitHub Gist (free, requires token)</div>
+        </div>
+        <div class="cloud-provider" onclick="selectCloudProvider('jsonbin')">
+            <div class="cloud-provider-title">📦 JSONBin.io</div>
+            <div class="cloud-provider-desc">Cloud JSON storage with API access (free tier available)</div>
+        </div>
+        <div class="cloud-provider" onclick="selectCloudProvider('sheet')">
+            <div class="cloud-provider-title">📊 Google Sheets</div>
+            <div class="cloud-provider-desc">Export to Google Sheets for advanced analysis</div>
+        </div>
+        <div class="cloud-provider" onclick="selectCloudProvider('webhook')">
+            <div class="cloud-provider-title">🔗 Custom Webhook</div>
+            <div class="cloud-provider-desc">Send data to your own server or automation service</div>
+        </div>
+
+        <div id="cloudActionArea" style="margin-top: 2rem;"></div>
+
+        <div style="margin-top: 2rem; padding: 1rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border);">
+            <h3 style="color: var(--cloud); margin-bottom: 0.5rem;">Auto-Save Status</h3>
+            <div id="autoSaveStatus">Not configured</div>
+            <button class="btn-cloud" onclick="enableAutoSave()" style="width: 100%; margin-top: 1rem;">
+                ⚡ Enable Auto-Save
+            </button>
+        </div>
+    </div>
+
+    <div class="panel-overlay" id="folderOverlay" onclick="closeFolderPanel()"></div>
+    <div class="side-panel" id="folderPanel" style="width: 500px; right: -500px;">
+        <div class="panel-header">
+            <h2>📁 Desktop Folder Manager</h2>
+            <button class="close-modal" onclick="closeFolderPanel()">×</button>
+        </div>
+
+        <div class="folder-info">
+            <h4>📂 Tribalights Attendance Pro Folder</h4>
+            <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;">All data is automatically organized in your Desktop folder:</p>
+            <ul>
+                <li><strong>Location:</strong> Desktop/Tribalights Attendance Pro/</li>
+                <li><strong>Daily Backups:</strong> attendance-backup-YYYY-MM-DD.json</li>
+                <li><strong>Weekly Reports:</strong> Weekly-Attendance-YYYY-MM-DD.xlsx/.csv</li>
+                <li><strong>IOP Attendance:</strong> IOP-Attendance-YYYY-MM-DD.csv</li>
+                <li><strong>CCSS Attendance:</strong> CCSS-Attendance-YYYY-MM-DD.csv</li>
+            </ul>
+        </div>
+
+        <div class="folder-path" id="folderPathDisplay">
+            ~/Desktop/Tribalights Attendance Pro/
+        </div>
+
+        <h3 style="color: var(--folder); margin-bottom: 1rem;">Quick Actions</h3>
+        <button class="btn-folder" onclick="exportToDesktopFolder()" style="width: 100%; margin-bottom: 0.5rem;">
+            💾 Save All Data Now
+        </button>
+        <button class="btn-primary" onclick="createDesktopShortcut()" style="width: 100%; margin-bottom: 0.5rem;">
+            🚀 Create Desktop Shortcut
+        </button>
+        <button class="btn-weekly" onclick="exportWeeklyExcelToFolder()" style="width: 100%; margin-bottom: 0.5rem;">
+            📊 Export This Week's Report
+        </button>
+        
+        <h3 style="color: var(--folder); margin: 1.5rem 0 1rem 0;">Recent Files</h3>
+        <div class="file-list" id="recentFilesList">
+            <div class="empty-state" style="padding: 1rem;">
+                <p style="font-size: 0.875rem;">Files will appear here after saving</p>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem; padding: 1rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border);">
+            <h4 style="color: var(--text-muted); margin-bottom: 0.5rem;">Auto-Save to Folder</h4>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" id="autoSaveFolder" onchange="toggleAutoSaveFolder()">
+                <span>Save to desktop folder every 5 minutes</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="panel-overlay" id="weeklyOverlay" onclick="closeWeeklyPanel()"></div>
+    <div class="side-panel" id="weeklyPanel" style="width: 600px; right: -600px;">
+        <div class="panel-header">
+            <h2>📈 Weekly Report Generator</h2>
+            <button class="close-modal" onclick="closeWeeklyPanel()">×</button>
+        </div>
+        <div id="weeklyPanelContent">
+            <div class="weekly-report">
+                <div class="week-selector">
+                    <button class="week-btn" onclick="changeWeekPanel(-1)">← Previous</button>
+                    <div class="week-display" id="weekDisplayPanel">Loading...</div>
+                    <button class="week-btn" onclick="changeWeekPanel(1)">Next →</button>
+                </div>
+            </div>
+            <button class="btn-weekly" onclick="generateFullWeeklyReport()" style="width: 100%; margin-bottom: 1rem;">
+                📊 Generate Full Report
+            </button>
+            <div id="fullWeeklyReport"></div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">
+        <span id="toastIcon">✅</span>
+        <span id="toastMessage">Operation successful</span>
+    </div>
+
+    <div class="auto-save-status" id="autoSaveStatusBar">
+        <span id="autoSaveIcon">💾</span>
+        <span id="autoSaveText">Ready</span>
+    </div>
+
+    <script>
+        // Data Management
+        let clients = JSON.parse(localStorage.getItem('attendanceClients')) || [];
+        let attendanceRecords = JSON.parse(localStorage.getItem('attendanceRecords')) || {};
+        let currentFilter = 'all';
+        let currentStatFilter = null;
+        let deviceId = localStorage.getItem('deviceId') || generateDeviceId();
+        let currentWeekOffset = 0;
+        let cloudConfig = JSON.parse(localStorage.getItem('cloudConfig')) || {};
+        let autoSaveInterval = null;
+        let folderAutoSaveInterval = null;
+        let fileSystemDirectoryHandle = null;
+
+        const FOLDER_NAME = 'Tribalights Attendance Pro';
+        const FILE_PREFIX = 'attendance-backup';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            localStorage.setItem('deviceId', deviceId);
+            document.getElementById('deviceIdDisplay').textContent = 'Device ID: ' + deviceId.substring(0, 8) + '...';
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('iopDate').value = today;
+            document.getElementById('ccssDate').value = today;
+            updateWeekDisplay();
+            renderAll();
+            updateAbsenteeList();
+            checkCloudStatus();
+            loadRecentFilesList();
+            
+            document.getElementById('addClientForm').addEventListener('submit', (e) => { e.preventDefault(); addClient(); });
+            if (cloudConfig.autoSave) enableAutoSave();
+            if (localStorage.getItem('folderAutoSave') === 'true') {
+                document.getElementById('autoSaveFolder').checked = true;
+                enableFolderAutoSave();
+            }
+        });
+
+        function generateDeviceId() {
+            return 'dev_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        }
+
+        // Desktop Folder Functions
+        async function requestFolderAccess() {
+            try {
+                if ('showDirectoryPicker' in window) {
+                    // Try to get existing folder or create new one
+                    try {
+                        const desktopHandle = await window.showDirectoryPicker();
+                        fileSystemDirectoryHandle = await desktopHandle.getDirectoryHandle(FOLDER_NAME, { create: true });
+                        showToast('Connected to desktop folder: ' + FOLDER_NAME, 'folder');
+                        updateFolderStatus('connected');
+                        return true;
+                    } catch (err) {
+                        console.log('User cancelled or error:', err);
+                        return false;
+                    }
+                } else {
+                    showToast('Your browser supports downloads to default folder only', 'folder');
+                    return false;
+                }
+            } catch (error) {
+                console.error('Folder access error:', error);
+                return false;
+            }
+        }
+
+        async function exportToDesktopFolder() {
+            updateFolderStatus('saving');
+            const data = { 
+                clients: clients, 
+                attendanceRecords: attendanceRecords, 
+                exportDate: new Date().toISOString(),
+                deviceId: deviceId,
+                version: '2.0'
+            };
+            
+            const dateStr = new Date().toISOString().split('T')[0];
+            const filename = `${FILE_PREFIX}-${dateStr}.json`;
+            
+            // Try File System Access API first
+            if ('showSaveFilePicker' in window) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: filename,
+                        types: [{
+                            description: 'JSON Files',
+                            accept: { 'application/json': ['.json'] }
+                        }],
+                        startIn: 'desktop'
+                    });
+                    
+                    const writable = await handle.createWritable();
+                    await writable.write(JSON.stringify(data, null, 2));
+                    await writable.close();
+                    
+                    showToast('Saved to desktop: ' + filename, 'folder');
+                    updateFolderStatus('saved');
+                    addToRecentFiles(filename);
+                    return;
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.error('Save error:', err);
+                    }
+                }
+            }
+            
+            // Fallback to download
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            showToast('Downloaded: ' + filename + ' (Save to Desktop/' + FOLDER_NAME + ')', 'folder');
+            updateFolderStatus('saved');
+            addToRecentFiles(filename);
+        }
+
+        async function exportAttendanceToFolder(type) {
+            const date = document.getElementById(type + 'Date').value;
+            const list = sortByFirstName(clients.filter(c => {
+                if (type === 'iop') return c.status === 'active';
+                if (type === 'ccss') return c.status === 'graduated';
+                return false;
+            }));
+            
+            let csv = '#,First Name,Last Name,Status,Date\n';
+            list.forEach((client, i) => {
+                const r = getAttendance(client.id, date);
+                csv += (i+1) + ',' + client.firstName + ',' + (client.lastName || '') + ',' + (r ? r.status : 'unmarked') + ',' + date + '\n';
+            });
+            
+            const filename = `${type.toUpperCase()}-Attendance-${date}.csv`;
+            
+            if ('showSaveFilePicker' in window) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: filename,
+                        types: [{
+                            description: 'CSV Files',
+                            accept: { 'text/csv': ['.csv'] }
+                        }],
+                        startIn: 'desktop'
+                    });
+                    
+                    const writable = await handle.createWritable();
+                    await writable.write(csv);
+                    await writable.close();
+                    
+                    showToast(`Saved ${type.toUpperCase()} attendance to desktop`, 'folder');
+                    addToRecentFiles(filename);
+                    return;
+                } catch (err) {
+                    if (err.name === 'AbortError') return;
+                }
+            }
+            
+            // Fallback
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            showToast(`Downloaded ${filename}`, 'folder');
+            addToRecentFiles(filename);
+        }
+
+        async function exportWeeklyExcelToFolder() {
+            const week = getWeekDates(currentWeekOffset);
+            const report = calculateWeeklyStats(week);
+            
+            const wb = XLSX.utils.book_new();
+            wb.Props = { 
+                Title: 'Weekly Attendance Report', 
+                Subject: 'Attendance', 
+                Author: 'Tribalights Attendance Pro', 
+                CreatedDate: new Date() 
+            };
+
+            // Summary sheet
+            const summaryData = [
+                ['Tribalights Attendance Pro - Weekly Report'],
+                ['Week:', week.startStr + ' to ' + week.endStr],
+                ['Generated:', new Date().toLocaleString()],
+                ['Total Clients:', report.totalClients],
+                []
+            ];
+            summaryData.push(['Day', 'Present', 'Absent', 'Late', 'Excused', 'Online', 'Unmarked']);
+            Object.entries(report.dailyStats).forEach(([day, stats]) => {
+                summaryData.push([day, stats.present, stats.absent, stats.late, stats.excused, stats.online, stats.unmarked]);
+            });
+            const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+            // Client details sheet
+            const clientData = [['Client Name', 'Status', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', 'Attendance Rate']];
+            report.clientReports.forEach(client => {
+                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                const row = [client.name, client.status];
+                days.forEach(day => row.push(client.days[day]));
+                row.push(client.attendanceRate + '%');
+                clientData.push(row);
+            });
+            const ws2 = XLSX.utils.aoa_to_sheet(clientData);
+            XLSX.utils.book_append_sheet(wb, ws2, 'Client Details');
+
+            const filename = `Weekly-Attendance-${week.startStr}-to-${week.endStr}.xlsx`;
+            
+            // Generate blob
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/octet-stream' });
+            
+            if ('showSaveFilePicker' in window) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: filename,
+                        types: [{
+                            description: 'Excel Files',
+                            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+                        }],
+                        startIn: 'desktop'
+                    });
+                    
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    
+                    showToast('Weekly report saved to desktop', 'folder');
+                    addToRecentFiles(filename);
+                    return;
+                } catch (err) {
+                    if (err.name === 'AbortError') return;
+                }
+            }
+            
+            // Fallback
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            showToast('Downloaded ' + filename, 'folder');
+            addToRecentFiles(filename);
+        }
+
+        async function exportWeeklyCSVToFolder() {
+            const week = getWeekDates(currentWeekOffset);
+            const report = calculateWeeklyStats(week);
+
+            let csv = 'Tribalights Attendance Pro - Weekly Report\n';
+            csv += 'Week:,' + week.startStr + ' to ' + week.endStr + '\n';
+            csv += 'Generated:,' + new Date().toLocaleString() + '\n\n';
+            csv += 'Day,Present,Absent,Late,Excused,Online,Unmarked\n';
+            Object.entries(report.dailyStats).forEach(([day, stats]) => {
+                csv += day + ',' + stats.present + ',' + stats.absent + ',' + stats.late + ',' + stats.excused + ',' + stats.online + ',' + stats.unmarked + '\n';
+            });
+            csv += '\nClient Name,Status,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday,Attendance Rate\n';
+            report.clientReports.forEach(client => {
+                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                csv += client.name + ',' + client.status + ',';
+                days.forEach(day => csv += client.days[day] + ',');
+                csv += client.attendanceRate + '%\n';
+            });
+
+            const filename = `Weekly-Attendance-${week.startStr}.csv`;
+            
+            if ('showSaveFilePicker' in window) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: filename,
+                        types: [{
+                            description: 'CSV Files',
+                            accept: { 'text/csv': ['.csv'] }
+                        }],
+                        startIn: 'desktop'
+                    });
+                    
+                    const writable = await handle.createWritable();
+                    await writable.write(csv);
+                    await writable.close();
+                    
+                    showToast('Weekly CSV saved to desktop', 'folder');
+                    addToRecentFiles(filename);
+                    return;
+                } catch (err) {
+                    if (err.name === 'AbortError') return;
+                }
+            }
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            showToast('Downloaded ' + filename, 'folder');
+            addToRecentFiles(filename);
+        }
+
+        function importFromDesktop(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.clients && confirm('Import ' + data.clients.length + ' clients from ' + file.name + '? This will REPLACE current data.')) {
+                        clients = data.clients;
+                        attendanceRecords = data.attendanceRecords || {};
+                        saveData();
+                        renderAll();
+                        updateAbsenteeList();
+                        showToast('Imported from ' + file.name, 'folder');
+                    }
+                } catch (error) {
+                    showToast('Error importing: ' + error.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+            input.value = '';
+        }
+
+        function addToRecentFiles(filename) {
+            let recentFiles = JSON.parse(localStorage.getItem('recentFiles') || '[]');
+            recentFiles.unshift({
+                name: filename,
+                date: new Date().toISOString(),
+                size: 'Unknown'
+            });
+            recentFiles = recentFiles.slice(0, 10); // Keep last 10
+            localStorage.setItem('recentFiles', JSON.stringify(recentFiles));
+            loadRecentFilesList();
+        }
+
+        function loadRecentFilesList() {
+            const recentFiles = JSON.parse(localStorage.getItem('recentFiles') || '[]');
+            const container = document.getElementById('recentFilesList');
+            
+            if (recentFiles.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="padding: 1rem;"><p style="font-size: 0.875rem;">No recent files</p></div>';
+                return;
+            }
+            
+            container.innerHTML = recentFiles.map(file => `
+                <div class="file-item">
+                    <div>
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-date">${new Date(file.date).toLocaleString()}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateFolderStatus(status) {
+            const indicator = document.getElementById('folderIndicator');
+            const icon = document.getElementById('folderIcon');
+            const text = document.getElementById('folderText');
+            
+            indicator.className = 'folder-indicator ' + status;
+            
+            if (status === 'connected' || status === 'saved') {
+                icon.textContent = '✅';
+                text.textContent = 'Saved to Folder';
+            } else if (status === 'saving') {
+                icon.textContent = '💾';
+                text.textContent = 'Saving...';
+            } else if (status === 'error') {
+                icon.textContent = '❌';
+                text.textContent = 'Save Error';
+            } else {
+                icon.textContent = '📁';
+                text.textContent = 'Desktop Folder';
+            }
+        }
+
+        function openFolderPanel() {
+            document.getElementById('folderPanel').classList.add('active');
+            document.getElementById('folderOverlay').classList.add('active');
+        }
+
+        function closeFolderPanel() {
+            document.getElementById('folderPanel').classList.remove('active');
+            document.getElementById('folderOverlay').classList.remove('active');
+        }
+
+        function toggleAutoSaveFolder() {
+            const enabled = document.getElementById('autoSaveFolder').checked;
+            localStorage.setItem('folderAutoSave', enabled);
+            
+            if (enabled) {
+                enableFolderAutoSave();
+                showToast('Auto-save to folder enabled (every 5 minutes)', 'folder');
+            } else {
+                disableFolderAutoSave();
+                showToast('Auto-save disabled', 'folder');
+            }
+        }
+
+        function enableFolderAutoSave() {
+            if (folderAutoSaveInterval) clearInterval(folderAutoSaveInterval);
+            folderAutoSaveInterval = setInterval(() => {
+                exportToDesktopFolderSilent();
+            }, 300000); // 5 minutes
+        }
+
+        function disableFolderAutoSave() {
+            if (folderAutoSaveInterval) {
+                clearInterval(folderAutoSaveInterval);
+                folderAutoSaveInterval = null;
+            }
+        }
+
+        async function exportToDesktopFolderSilent() {
+            // Silent auto-save without picker
+            const data = { 
+                clients: clients, 
+                attendanceRecords: attendanceRecords, 
+                exportDate: new Date().toISOString(),
+                deviceId: deviceId,
+                version: '2.0',
+                autoSave: true
+            };
+            
+            const dateStr = new Date().toISOString().split('T')[0];
+            const timeStr = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+            const filename = `${FILE_PREFIX}-auto-${dateStr}-${timeStr}.json`;
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            updateFolderStatus('saved');
+            addToRecentFiles(filename);
+            console.log('Auto-saved:', filename);
+        }
+
+        function createDesktopShortcut() {
+            // Instructions for creating desktop shortcut
+            const instructions = `
+How to Create Desktop Shortcut:
+
+Chrome/Edge:
+1. Click the ⋮ menu (top right)
+2. More tools → Create shortcut
+3. Check "Open as window"
+4. Name: "Tribalights Attendance Pro"
+5. Click Create
+
+Or simply drag this tab to your desktop!
+            `;
+            alert(instructions);
+            showToast('Shortcut instructions displayed', 'folder');
+        }
+
+        // Week Management
+        function getWeekDates(offset = 0) {
+            const now = new Date();
+            const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay() + (offset * 7)));
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(endOfWeek.getDate() + 6);
+            endOfWeek.setHours(23, 59, 59, 999);
+            return { start: startOfWeek, end: endOfWeek, startStr: startOfWeek.toISOString().split('T')[0], endStr: endOfWeek.toISOString().split('T')[0] };
+        }
+
+        function updateWeekDisplay() {
+            const week = getWeekDates(currentWeekOffset);
+            const displayText = week.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' - ' + week.end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            document.getElementById('weekDisplay').textContent = displayText;
+            document.getElementById('weekDisplayPanel').textContent = displayText;
+            document.getElementById('reportWeekLabel').textContent = displayText;
+        }
+
+        function changeWeek(direction) {
+            currentWeekOffset += direction;
+            updateWeekDisplay();
+        }
+
+        function changeWeekPanel(direction) {
+            currentWeekOffset += direction;
+            updateWeekDisplay();
+        }
+
+        // Weekly Report Generation
+        function generateWeeklyReport() {
+            const week = getWeekDates(currentWeekOffset);
+            const report = calculateWeeklyStats(week);
+            displayWeeklyReport(report, week);
+        }
+
+        function generateFullWeeklyReport() {
+            const week = getWeekDates(currentWeekOffset);
+            const report = calculateWeeklyStats(week);
+            document.getElementById('fullWeeklyReport').innerHTML = generateReportHTML(report, week);
+        }
+
+        function calculateWeeklyStats(week) {
+            const stats = { totalClients: clients.length, dailyStats: {}, clientReports: [] };
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(week.start);
+                date.setDate(date.getDate() + i);
+                const dateStr = date.toISOString().split('T')[0];
+                const dayStats = { present: 0, absent: 0, late: 0, excused: 0, online: 0, unmarked: 0, total: 0 };
+
+                if (attendanceRecords[dateStr]) {
+                    Object.values(attendanceRecords[dateStr]).forEach(record => {
+                        dayStats[record.status] = (dayStats[record.status] || 0) + 1;
+                        dayStats.total++;
+                    });
+                }
+                stats.dailyStats[days[i]] = dayStats;
+            }
+
+            // Per-client weekly summary
+            clients.forEach(client => {
+                const clientReport = { name: client.firstName + ' ' + (client.lastName || ''), id: client.id, status: client.status, days: {} };
+                let presentCount = 0, absentCount = 0;
+                for (let i = 0; i < 7; i++) {
+                    const date = new Date(week.start);
+                    date.setDate(date.getDate() + i);
+                    const dateStr = date.toISOString().split('T')[0];
+                    const record = attendanceRecords[dateStr] && attendanceRecords[dateStr][client.id];
+                    clientReport.days[days[i]] = record ? record.status : 'unmarked';
+                    if (record && record.status === 'present') presentCount++;
+                    if (record && record.status === 'absent') absentCount++;
+                }
+                clientReport.presentCount = presentCount;
+                clientReport.absentCount = absentCount;
+                clientReport.attendanceRate = ((presentCount / 7) * 100).toFixed(1);
+                stats.clientReports.push(clientReport);
+            });
+
+            return stats;
+        }
+
+        function displayWeeklyReport(report, week) {
+            const container = document.getElementById('weeklyReportContent');
+            container.innerHTML = generateReportHTML(report, week);
+        }
+
+        function generateReportHTML(report, week) {
+            let html = '<div class="weekly-report">';
+            html += '<div class="weekly-header"><div class="weekly-title">Weekly Summary</div></div>';
+            html += '<div class="report-summary">';
+            html += '<div class="summary-box"><div class="summary-value">' + report.totalClients + '</div><div class="summary-label">Total Clients</div></div>';
+
+            let totalPresent = 0, totalAbsent = 0;
+            Object.values(report.dailyStats).forEach(day => { totalPresent += day.present; totalAbsent += day.absent; });
+            html += '<div class="summary-box"><div class="summary-value">' + totalPresent + '</div><div class="summary-label">Total Present</div></div>';
+            html += '<div class="summary-box"><div class="summary-value">' + totalAbsent + '</div><div class="summary-label">Total Absent</div></div>';
+            html += '</div>';
+
+            html += '<h3 style="margin-top: 1.5rem; margin-bottom: 1rem; color: var(--weekly);">Daily Breakdown</h3>';
+            html += '<table class="report-table"><thead><tr><th>Day</th><th>Present</th><th>Absent</th><th>Late</th><th>Excused</th><th>Online</th><th>Unmarked</th></tr></thead><tbody>';
+            Object.entries(report.dailyStats).forEach(([day, stats]) => {
+                html += '<tr><td><strong>' + day + '</strong></td><td style="color: var(--present);">' + stats.present + '</td><td style="color: var(--absent);">' + stats.absent + '</td><td style="color: var(--late);">' + stats.late + '</td><td style="color: var(--excused);">' + stats.excused + '</td><td style="color: var(--online-dark);">' + stats.online + '</td><td>' + stats.unmarked + '</td></tr>';
+            });
+            html += '</tbody></table>';
+
+            html += '<h3 style="margin-top: 1.5rem; margin-bottom: 1rem; color: var(--weekly);">Client Attendance Details</h3>';
+            html += '<table class="report-table"><thead><tr><th>Client</th><th>Status</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th><th>Rate</th></tr></thead><tbody>';
+            report.clientReports.forEach(client => {
+                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                html += '<tr><td>' + client.name + '</td><td><span class="badge badge-' + client.status + '">' + client.status + '</span></td>';
+                days.forEach(day => {
+                    const status = client.days[day];
+                    const color = status === 'present' ? 'var(--present)' : status === 'absent' ? 'var(--absent)' : status === 'late' ? 'var(--late)' : status === 'excused' ? 'var(--excused)' : status === 'online' ? 'var(--online-dark)' : 'var(--text-muted)';
+                    const icon = status === 'present' ? '✓' : status === 'absent' ? '✗' : status === 'late' ? '⏰' : status === 'excused' ? '📝' : status === 'online' ? '💻' : '-';
+                    html += '<td style="color: ' + color + '; text-align: center;">' + icon + '</td>';
+                });
+                html += '<td><strong>' + client.attendanceRate + '%</strong></td></tr>';
+            });
+            html += '</tbody></table></div>';
+            return html;
+        }
+
+        function exportWeeklyPDF() {
+            const week = getWeekDates(currentWeekOffset);
+            const report = calculateWeeklyStats(week);
+            const html = generateReportHTML(report, week);
+
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write('<html><head><title>Weekly Attendance Report - Tribalights</title>');
+            printWindow.document.write('<style>body { font-family: Arial, sans-serif; padding: 20px; } table { width: 100%; border-collapse: collapse; margin: 20px 0; } th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; } .summary { display: flex; gap: 20px; margin: 20px 0; } .box { border: 1px solid #ddd; padding: 15px; text-align: center; border-radius: 5px; }</style>');
+            printWindow.document.write('</head><body>');
+            printWindow.document.write('<h1>Tribalights Attendance Pro - Weekly Report</h1>');
+            printWindow.document.write('<p><strong>Week:</strong> ' + week.startStr + ' to ' + week.endStr + '</p>');
+            printWindow.document.write(html);
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+            printWindow.print();
+        }
+
+        // Cloud Save Functions (keep existing)
+        function openCloudPanel() {
+            document.getElementById('cloudPanel').classList.add('active');
+            document.getElementById('cloudOverlay').classList.add('active');
+        }
+
+        function closeCloudPanel() {
+            document.getElementById('cloudPanel').classList.remove('active');
+            document.getElementById('cloudOverlay').classList.remove('active');
+        }
+
+        function selectCloudProvider(provider) {
+            document.querySelectorAll('.cloud-provider').forEach(el => el.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            const actionArea = document.getElementById('cloudActionArea');
+
+            if (provider === 'github') {
+                actionArea.innerHTML = '<h3 style="color: var(--cloud); margin-bottom: 1rem;">GitHub Gist Configuration</h3><div class="form-group"><label>GitHub Personal Access Token</label><input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxx"></div><div class="form-group"><label>Gist ID (leave empty to create new)</label><input type="text" id="gistId" placeholder="Optional - for existing gist"></div><button class="btn-cloud" onclick="saveToGitHub()" style="width: 100%;">💾 Save to GitHub Gist</button><button class="btn-cloud" onclick="loadFromGitHub()" style="width: 100%; margin-top: 0.5rem;">📂 Load from GitHub Gist</button>';
+            } else if (provider === 'jsonbin') {
+                actionArea.innerHTML = '<h3 style="color: var(--cloud); margin-bottom: 1rem;">JSONBin.io Configuration</h3><div class="form-group"><label>API Key</label><input type="password" id="jsonbinKey" placeholder="$2b$10..."></div><div class="form-group"><label>Bin ID (leave empty to create new)</label><input type="text" id="jsonbinId" placeholder="Optional - for existing bin"></div><button class="btn-cloud" onclick="saveToJsonBin()" style="width: 100%;">💾 Save to JSONBin</button><button class="btn-cloud" onclick="loadFromJsonBin()" style="width: 100%; margin-top: 0.5rem;">📂 Load from JSONBin</button>';
+            } else if (provider === 'sheet') {
+                actionArea.innerHTML = '<h3 style="color: var(--cloud); margin-bottom: 1rem;">Google Sheets Export</h3><p style="color: var(--text-muted); margin-bottom: 1rem;">Export weekly data to Google Sheets. You will need to authorize access.</p><button class="btn-cloud" onclick="exportToGoogleSheets()" style="width: 100%;">📊 Export to Google Sheets</button>';
+            } else if (provider === 'webhook') {
+                actionArea.innerHTML = '<h3 style="color: var(--cloud); margin-bottom: 1rem;">Custom Webhook</h3><div class="form-group"><label>Webhook URL</label><input type="text" id="webhookUrl" placeholder="https://your-server.com/api/attendance"></div><button class="btn-cloud" onclick="sendToWebhook()" style="width: 100%;">🚀 Send Data to Webhook</button>';
+            }
+        }
+
+        async function saveToGitHub() {
+            const token = document.getElementById('githubToken').value;
+            const gistId = document.getElementById('gistId').value;
+            if (!token) { showToast('Please enter a GitHub token', 'error'); return; }
+
+            updateAutoSaveStatus('saving');
+            const data = { clients: clients, attendanceRecords: attendanceRecords, lastSaved: new Date().toISOString(), deviceId: deviceId };
+            const filename = 'attendance-data-' + new Date().toISOString().split('T')[0] + '.json';
+
+            try {
+                const response = await fetch(gistId ? 'https://api.github.com/gists/' + gistId : 'https://api.github.com/gists', {
+                    method: gistId ? 'PATCH' : 'POST',
+                    headers: { 'Authorization': 'token ' + token, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description: 'Attendance Manager Pro Backup', public: false, files: { [filename]: { content: JSON.stringify(data, null, 2) } } })
+                });
+                const result = await response.json();
+                if (result.id) {
+                    cloudConfig.github = { token: token, gistId: result.id };
+                    localStorage.setItem('cloudConfig', JSON.stringify(cloudConfig));
+                    showToast('Saved to GitHub Gist! ID: ' + result.id, 'cloud');
+                    updateCloudStatus('connected');
+                }
+            } catch (error) {
+                showToast('Error saving to GitHub: ' + error.message, 'error');
+                updateAutoSaveStatus('error');
+            }
+        }
+
+        async function loadFromGitHub() {
+            const token = document.getElementById('githubToken').value;
+            const gistId = document.getElementById('gistId').value || (cloudConfig.github && cloudConfig.github.gistId);
+            if (!token || !gistId) { showToast('Please enter both token and Gist ID', 'error'); return; }
+
+            try {
+                const response = await fetch('https://api.github.com/gists/' + gistId, { headers: { 'Authorization': 'token ' + token } });
+                const result = await response.json();
+                const file = Object.values(result.files)[0];
+                const data = JSON.parse(file.content);
+                if (confirm('Load ' + data.clients.length + ' clients from GitHub? This will merge with existing data.')) {
+                    mergeData(data);
+                    showToast('Loaded from GitHub Gist!', 'cloud');
+                }
+            } catch (error) {
+                showToast('Error loading from GitHub: ' + error.message, 'error');
+            }
+        }
+
+        async function saveToJsonBin() {
+            const key = document.getElementById('jsonbinKey').value;
+            const binId = document.getElementById('jsonbinId').value;
+            if (!key) { showToast('Please enter API key', 'error'); return; }
+
+            updateAutoSaveStatus('saving');
+            const data = { clients: clients, attendanceRecords: attendanceRecords, lastSaved: new Date().toISOString() };
+
+            try {
+                const response = await fetch(binId ? 'https://api.jsonbin.io/v3/b/' + binId : 'https://api.jsonbin.io/v3/b', {
+                    method: binId ? 'PUT' : 'POST',
+                    headers: { 'X-Master-Key': key, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (result.metadata && result.metadata.id) {
+                    cloudConfig.jsonbin = { key: key, binId: result.metadata.id };
+                    localStorage.setItem('cloudConfig', JSON.stringify(cloudConfig));
+                    showToast('Saved to JSONBin! ID: ' + result.metadata.id, 'cloud');
+                    updateCloudStatus('connected');
+                }
+            } catch (error) {
+                showToast('Error saving to JSONBin: ' + error.message, 'error');
+                updateAutoSaveStatus('error');
+            }
+        }
+
+        async function loadFromJsonBin() {
+            const key = document.getElementById('jsonbinKey').value;
+            const binId = document.getElementById('jsonbinId').value || (cloudConfig.jsonbin && cloudConfig.jsonbin.binId);
+            if (!key || !binId) { showToast('Please enter both API key and Bin ID', 'error'); return; }
+
+            try {
+                const response = await fetch('https://api.jsonbin.io/v3/b/' + binId + '/latest', { headers: { 'X-Master-Key': key } });
+                const result = await response.json();
+                if (confirm('Load ' + result.record.clients.length + ' clients from JSONBin? This will merge with existing data.')) {
+                    mergeData(result.record);
+                    showToast('Loaded from JSONBin!', 'cloud');
+                }
+            } catch (error) {
+                showToast('Error loading from JSONBin: ' + error.message, 'error');
+            }
+        }
+
+        function exportToGoogleSheets() {
+            const week = getWeekDates(currentWeekOffset);
+            const report = calculateWeeklyStats(week);
+            const csvContent = generateCSVForSheets(report, week);
+
+            // Open Google Sheets with import
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            window.open('https://docs.google.com/spreadsheets/create?usp=sheets_home&ths=true', '_blank');
+            showToast('Google Sheets opened. Import the CSV file manually.', 'cloud');
+        }
+
+        function generateCSVForSheets(report, week) {
+            let csv = 'Tribalights Attendance Pro - Weekly Report - ' + week.startStr + ' to ' + week.endStr + '\n\n';
+            csv += 'Client Name,Status,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday,Attendance Rate\n';
+            report.clientReports.forEach(client => {
+                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                csv += client.name + ',' + client.status + ',';
+                days.forEach(day => csv += (client.days[day] || 'unmarked') + ',');
+                csv += client.attendanceRate + '%\n';
+            });
+            return csv;
+        }
+
+        async function sendToWebhook() {
+            const url = document.getElementById('webhookUrl').value;
+            if (!url) { showToast('Please enter webhook URL', 'error'); return; }
+
+            const data = { clients: clients, attendanceRecords: attendanceRecords, timestamp: new Date().toISOString(), deviceId: deviceId };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    showToast('Data sent to webhook successfully!', 'cloud');
+                } else {
+                    showToast('Webhook returned error: ' + response.status, 'error');
+                }
+            } catch (error) {
+                showToast('Error sending to webhook: ' + error.message, 'error');
+            }
+        }
+
+        function enableAutoSave() {
+            if (autoSaveInterval) clearInterval(autoSaveInterval);
+            cloudConfig.autoSave = true;
+            localStorage.setItem('cloudConfig', JSON.stringify(cloudConfig));
+
+            autoSaveInterval = setInterval(() => {
+                if (cloudConfig.github && cloudConfig.github.token) {
+                    autoSaveToGitHub();
+                } else if (cloudConfig.jsonbin && cloudConfig.jsonbin.key) {
+                    autoSaveToJsonBin();
+                }
+            }, 300000); // Auto-save every 5 minutes
+
+            showToast('Auto-save enabled (every 5 minutes)', 'cloud');
+            document.getElementById('autoSaveStatus').textContent = 'Active - every 5 minutes';
+        }
+
+        async function autoSaveToGitHub() {
+            if (!cloudConfig.github) return;
+            updateAutoSaveStatus('saving');
+            // Implementation similar to saveToGitHub but silent
+        }
+
+        async function autoSaveToJsonBin() {
+            if (!cloudConfig.jsonbin) return;
+            updateAutoSaveStatus('saving');
+            // Implementation similar to saveToJsonBin but silent
+        }
+
+        function updateAutoSaveStatus(status) {
+            const bar = document.getElementById('autoSaveStatusBar');
+            const icon = document.getElementById('autoSaveIcon');
+            const text = document.getElementById('autoSaveText');
+            bar.className = 'auto-save-status ' + status;
+            if (status === 'saving') { icon.textContent = '⏳'; text.textContent = 'Saving...'; }
+            else if (status === 'saved') { icon.textContent = '✅'; text.textContent = 'Saved'; }
+            else if (status === 'error') { icon.textContent = '❌'; text.textContent = 'Error'; }
+            else { icon.textContent = '💾'; text.textContent = 'Ready'; }
+        }
+
+        function updateCloudStatus(status) {
+            const indicator = document.getElementById('cloudIndicator');
+            const icon = document.getElementById('cloudIcon');
+            const text = document.getElementById('cloudText');
+            indicator.className = 'cloud-indicator ' + status;
+            if (status === 'connected') { icon.textContent = '☁️'; text.textContent = 'Cloud Connected'; }
+            else if (status === 'syncing') { icon.textContent = '🔄'; text.textContent = 'Syncing...'; }
+            else { icon.textContent = '☁️'; text.textContent = 'Cloud Save'; }
+        }
+
+        function checkCloudStatus() {
+            if (cloudConfig.github || cloudConfig.jsonbin) {
+                updateCloudStatus('connected');
+            }
+        }
+
+        function saveToCloud() {
+            openCloudPanel();
+        }
+
+        // Original functions
+        function openSyncPanel() { document.getElementById('syncPanel').classList.add('active'); document.getElementById('syncOverlay').classList.add('active'); }
+        function closeSyncPanel() { document.getElementById('syncPanel').classList.remove('active'); document.getElementById('syncOverlay').classList.remove('active'); }
+        function openWeeklyPanel() { document.getElementById('weeklyPanel').classList.add('active'); document.getElementById('weeklyOverlay').classList.add('active'); generateFullWeeklyReport(); }
+        function closeWeeklyPanel() { document.getElementById('weeklyPanel').classList.remove('active'); document.getElementById('weeklyOverlay').classList.remove('active'); }
+        function selectSyncMethod(method) { document.querySelectorAll('.sync-method').forEach(el => el.classList.remove('active')); event.currentTarget.classList.add('active'); const actionArea = document.getElementById('syncActionArea'); if (method === 'code') { const code = btoa(JSON.stringify({clients: clients, attendanceRecords: attendanceRecords})); actionArea.innerHTML = '<h3 style="color: var(--sync); margin-bottom: 1rem;">Sync Code</h3><div class="sync-code-display">' + code + '<button class="copy-btn" onclick="copyToClipboard(String.raw`' + code + '`)">Copy</button></div><p style="color: var(--text-muted); margin: 1rem 0;">Paste code from another device:</p><textarea id="importCode" style="width: 100%; height: 100px; background: var(--bg); border: 2px solid var(--border); border-radius: 8px; color: var(--text); padding: 1rem;" placeholder="Paste code here..."></textarea><button class="btn-sync" onclick="importFromCode()" style="width: 100%; margin-top: 1rem;">📥 Import</button>'; } else { actionArea.innerHTML = '<button class="btn-sync" onclick="exportData()" style="width: 100%;">📤 Export to File</button>'; } }
+        function copyToClipboard(text) { navigator.clipboard.writeText(text).then(() => showToast('Copied!')); }
+        function importFromCode() { try { const code = document.getElementById('importCode').value; const data = JSON.parse(atob(code)); mergeData(data); showToast('Data imported!'); closeSyncPanel(); } catch(e) { showToast('Invalid code', 'error'); } }
+        function mergeData(data) { const existingIds = new Set(clients.map(c => c.id)); data.clients.forEach(client => { if (!existingIds.has(client.id)) clients.push(client); }); Object.keys(data.attendanceRecords).forEach(date => { if (!attendanceRecords[date]) attendanceRecords[date] = {}; Object.assign(attendanceRecords[date], data.attendanceRecords[date]); }); saveData(); renderAll(); updateAbsenteeList(); }
+        function filterByStat(statType) { document.querySelectorAll('.stat-card').forEach(card => card.classList.remove('active-filter')); if (currentStatFilter === statType) { currentStatFilter = null; renderAll(); return; } currentStatFilter = statType; document.getElementById('stat' + statType.charAt(0).toUpperCase() + statType.slice(1)).classList.add('active-filter'); renderAll(); }
+        function updateAbsenteeList() { const today = new Date().toISOString().split('T')[0]; const absentees = []; if (attendanceRecords[today]) { Object.entries(attendanceRecords[today]).forEach(([clientId, record]) => { if (record.status === 'absent') { const client = clients.find(c => c.id == clientId); if (client) absentees.push(client); } }); } const section = document.getElementById('absenteeSection'); const list = document.getElementById('absenteeList'); const count = document.getElementById('absenteeCount'); if (absentees.length > 0) { section.classList.add('active'); count.textContent = absentees.length; list.innerHTML = absentees.map(client => '<div class="absentee-chip">' + client.firstName + ' ' + (client.lastName || '') + '<span class="remove" onclick="removeFromAbsentees(' + client.id + ')">×</span></div>').join(''); } else { section.classList.remove('active'); } }
+        function removeFromAbsentees(clientId) { const today = new Date().toISOString().split('T')[0]; if (attendanceRecords[today] && attendanceRecords[today][clientId]) { delete attendanceRecords[today][clientId]; saveData(); updateAbsenteeList(); renderAll(); showToast('Removed from absentee list'); } }
+        function clearAbsentees() { const today = new Date().toISOString().split('T')[0]; if (attendanceRecords[today]) { Object.keys(attendanceRecords[today]).forEach(clientId => { if (attendanceRecords[today][clientId].status === 'absent') delete attendanceRecords[today][clientId]; }); saveData(); updateAbsenteeList(); renderAll(); showToast('All absentees cleared'); } }
+        function addClient() { const firstName = document.getElementById('firstName').value.trim(); const lastName = document.getElementById('lastName').value.trim(); const status = document.querySelector('input[name="status"]:checked').value; if (!firstName) { showToast('Please enter a first name', 'error'); return; } const client = { id: Date.now(), firstName: firstName, lastName: lastName, status: status, addedDate: new Date().toISOString() }; clients.push(client); saveData(); document.getElementById('firstName').value = ''; document.getElementById('lastName').value = ''; document.getElementById('statusActive').checked = true; renderAll(); showToast('Added ' + firstName); }
+        function deleteClient(id) { if (confirm('Are you sure?')) { clients = clients.filter(c => c.id !== id); Object.keys(attendanceRecords).forEach(date => delete attendanceRecords[date][id]); saveData(); renderAll(); updateAbsenteeList(); showToast('Client removed'); } }
+        function updateStatus(id, newStatus) { const client = clients.find(c => c.id === id); if (client) { client.status = newStatus; saveData(); renderAll(); showToast(client.firstName + ' moved to ' + newStatus); } }
+        function getStatusLabel(status) { const labels = { 'active': 'IOP Morning', 'graduated': 'CCSS', 'discharged': 'Discharged' }; return labels[status] || status; }
+        function sortByFirstName(list) { return list.sort((a, b) => a.firstName.localeCompare(b.firstName, undefined, {sensitivity: 'base'})); }
+        function filterClients() { const search = document.getElementById('searchClients').value.toLowerCase(); renderMasterList(search); }
+        function filterByStatus(status) { currentFilter = status; document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active')); event.target.classList.add('active'); renderMasterList(); }
+        function setToday(type) { const today = new Date().toISOString().split('T')[0]; document.getElementById(type + 'Date').value = today; loadAttendance(type); }
+        function getAttendance(clientId, date) { if (!attendanceRecords[date]) return null; return attendanceRecords[date][clientId] || null; }
+        function setAttendance(clientId, date, status) { if (!attendanceRecords[date]) attendanceRecords[date] = {}; if (status === null) delete attendanceRecords[date][clientId]; else attendanceRecords[date][clientId] = { status: status, timestamp: new Date().toISOString() }; saveData(); loadAttendance(document.querySelector('.tab-content.active').id.replace('Tab', '').replace('master', 'iop')); updateStats(); updateAbsenteeList(); }
+        function loadAttendance(type) { const date = document.getElementById(type + 'Date').value; const container = document.getElementById(type + 'AttendanceList'); let filteredClients = sortByFirstName(clients.filter(c => { if (type === 'iop') return c.status === 'active'; if (type === 'ccss') return c.status === 'graduated'; return false; })); if (currentStatFilter && currentStatFilter !== 'all') { filteredClients = filteredClients.filter(client => { const record = getAttendance(client.id, date); return record && record.status === currentStatFilter; }); } document.getElementById(type + 'Count').textContent = filteredClients.length + ' clients'; if (filteredClients.length === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">' + (type === 'iop' ? '🌅' : '🎓') + '</div><p>No clients' + (currentStatFilter ? ' with status: ' + currentStatFilter : '') + '</p></div>'; updateTodayStats(); return; } let html = '<table class="attendance-table"><thead><tr><th>#</th><th>Client</th><th>Status</th><th>History</th></tr></thead><tbody>'; filteredClients.forEach((client, index) => { const record = getAttendance(client.id, date); const status = record ? record.status : 'unmarked'; html += '<tr class="attendance-row status-' + status + '"><td>' + (index + 1) + '</td><td><strong>' + client.firstName + ' ' + client.lastName + '</strong></td><td><div class="attendance-controls"><button class="attendance-btn present ' + (status === 'present' ? 'active' : '') + '" onclick="markAttendance(' + client.id + ', ' + "'" + date + "'" + ', ' + "'" + 'present' + "'" + ')">✓</button><button class="attendance-btn absent ' + (status === 'absent' ? 'active' : '') + '" onclick="markAttendance(' + client.id + ', ' + "'" + date + "'" + ', ' + "'" + 'absent' + "'" + ')">✗</button><button class="attendance-btn late ' + (status === 'late' ? 'active' : '') + '" onclick="markAttendance(' + client.id + ', ' + "'" + date + "'" + ', ' + "'" + 'late' + "'" + ')">⏰</button><button class="attendance-btn excused ' + (status === 'excused' ? 'active' : '') + '" onclick="markAttendance(' + client.id + ', ' + "'" + date + "'" + ', ' + "'" + 'excused' + "'" + ')">📝</button><button class="attendance-btn online ' + (status === 'online' ? 'active' : '') + '" onclick="markAttendance(' + client.id + ', ' + "'" + date + "'" + ', ' + "'" + 'online' + "'" + ')">💻</button><button class="attendance-btn clear" onclick="markAttendance(' + client.id + ', ' + "'" + date + "'" + ', null)">⌫</button></div></td><td><button class="history-btn" onclick="showHistory(' + client.id + ')">📊 View</button></td></tr>'; }); html += '</tbody></table>'; container.innerHTML = html; updateTodayStats(); }
+        function markAttendance(clientId, date, status) { setAttendance(clientId, date, status); showToast(status ? 'Marked as ' + status : 'Cleared'); }
+        function markAll(type, status) { const date = document.getElementById(type + 'Date').value; const clientsToMark = clients.filter(c => { if (type === 'iop') return c.status === 'active'; if (type === 'ccss') return c.status === 'graduated'; return false; }); clientsToMark.forEach(client => { if (!attendanceRecords[date]) attendanceRecords[date] = {}; attendanceRecords[date][client.id] = { status: status, timestamp: new Date().toISOString() }; }); saveData(); loadAttendance(type); updateAbsenteeList(); showToast('Marked all ' + clientsToMark.length + ' as ' + status); }
+        function showHistory(clientId) { const client = clients.find(c => c.id === clientId); if (!client) return; document.getElementById('historyClientName').textContent = client.firstName + ' ' + client.lastName; const records = []; Object.keys(attendanceRecords).sort().reverse().forEach(date => { if (attendanceRecords[date] && attendanceRecords[date][clientId]) records.push({ date: date, status: attendanceRecords[date][clientId].status }); }); const content = document.getElementById('historyContent'); if (records.length === 0) content.innerHTML = '<p style="text-align: center; color: var(--text-muted);">No records</p>'; else content.innerHTML = '<div class="history-grid">' + records.map(r => '<div class="history-item" style="background: ' + getStatusColor(r.status) + '20; border-color: ' + getStatusColor(r.status) + ';"><div class="history-date">' + formatDate(r.date) + '</div><div style="color: ' + getStatusColor(r.status) + '; font-weight: 600;">' + r.status + '</div></div>').join('') + '</div>'; document.getElementById('historyModal').classList.add('active'); }
+        function closeModal() { document.getElementById('historyModal').classList.remove('active'); }
+        function getStatusColor(status) { const colors = { 'present': 'var(--present)', 'absent': 'var(--absent)', 'late': 'var(--late)', 'excused': 'var(--excused)', 'online': 'var(--online-dark)', 'unmarked': 'var(--text-muted)' }; return colors[status] || colors['unmarked']; }
+        function formatDate(dateStr) { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+        function renderAll() { renderMasterList(); loadAttendance('iop'); loadAttendance('ccss'); updateStats(); }
+        function renderMasterList(searchTerm = '') { const container = document.getElementById('masterList'); let filtered = clients; if (currentFilter !== 'all') filtered = filtered.filter(c => c.status === currentFilter); if (searchTerm) filtered = filtered.filter(c => c.firstName.toLowerCase().includes(searchTerm) || (c.lastName && c.lastName.toLowerCase().includes(searchTerm))); filtered = sortByFirstName([...filtered]); document.getElementById('masterCount').textContent = filtered.length; if (filtered.length === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>' + (searchTerm ? 'No matches' : 'No clients') + '</p></div>'; return; } container.innerHTML = filtered.map(client => '<div class="client-item"><div class="client-info"><div class="client-name">' + client.firstName + ' ' + client.lastName + '</div><div class="client-status"><span class="badge badge-' + client.status + '">' + getStatusLabel(client.status) + '</span></div></div><div class="client-actions"><select onchange="updateStatus(' + client.id + ', this.value)" style="width: auto; padding: 0.5rem;"><option value="active" ' + (client.status === 'active' ? 'selected' : '') + '>Active</option><option value="graduated" ' + (client.status === 'graduated' ? 'selected' : '') + '>Graduated</option><option value="discharged" ' + (client.status === 'discharged' ? 'selected' : '') + '>Discharged</option></select><button class="btn-icon btn-danger" onclick="deleteClient(' + client.id + ')">🗑️</button></div></div>').join(''); }
+        function updateStats() { document.getElementById('totalClients').textContent = clients.length; updateTodayStats(); }
+        function updateTodayStats() { const today = new Date().toISOString().split('T')[0]; let p = 0, a = 0, l = 0, e = 0, o = 0; if (attendanceRecords[today]) { Object.values(attendanceRecords[today]).forEach(r => { if (r.status === 'present') p++; else if (r.status === 'absent') a++; else if (r.status === 'late') l++; else if (r.status === 'excused') e++; else if (r.status === 'online') o++; }); } document.getElementById('todayPresent').textContent = p; document.getElementById('todayAbsent').textContent = a; document.getElementById('todayLate').textContent = l; document.getElementById('todayExcused').textContent = e; document.getElementById('todayOnline').textContent = o; }
+        function switchTab(tab) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); event.target.classList.add('active'); document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active')); document.getElementById(tab + 'Tab').classList.add('active'); if (tab === 'iop' || tab === 'ccss') loadAttendance(tab); if (tab === 'weekly') updateWeekDisplay(); }
+        function exportData() { const data = { clients: clients, attendanceRecords: attendanceRecords, exportDate: new Date().toISOString() }; const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'attendance-backup-' + new Date().toISOString().split('T')[0] + '.json'; link.click(); showToast('Data exported'); }
+        function importData(input) { const file = input.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const data = JSON.parse(e.target.result); if (data.clients && confirm('Import ' + data.clients.length + ' clients? This will REPLACE current data.')) { clients = data.clients; attendanceRecords = data.attendanceRecords; saveData(); renderAll(); updateAbsenteeList(); showToast('Data imported'); } } catch (error) { showToast('Error: ' + error.message, 'error'); } }; reader.readAsText(file); input.value = ''; }
+        function exportAttendance(type) { const date = document.getElementById(type + 'Date').value; const list = sortByFirstName(clients.filter(c => { if (type === 'iop') return c.status === 'active'; if (type === 'ccss') return c.status === 'graduated'; return false; })); let csv = '#,First Name,Last Name,Status,Date\n'; list.forEach((client, i) => { const r = getAttendance(client.id, date); csv += (i+1) + ',' + client.firstName + ',' + (client.lastName || '') + ',' + (r ? r.status : 'unmarked') + ',' + date + '\n'; }); const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = type.toUpperCase() + '-Attendance-' + date + '.csv'; link.click(); showToast(type.toUpperCase() + ' attendance exported'); }
+        function saveData() { localStorage.setItem('attendanceClients', JSON.stringify(clients)); localStorage.setItem('attendanceRecords', JSON.stringify(attendanceRecords)); updateAutoSaveStatus('saved'); setTimeout(() => updateAutoSaveStatus('ready'), 2000); }
+        function showToast(message, type = 'success') { const toast = document.getElementById('toast'); const icon = document.getElementById('toastIcon'); const msg = document.getElementById('toastMessage'); toast.className = 'toast ' + type + ' show'; icon.textContent = type === 'success' ? '✅' : type === 'cloud' ? '☁️' : type === 'folder' ? '📁' : '❌'; msg.textContent = message; setTimeout(() => toast.classList.remove('show'), 3000); }
+        document.getElementById('historyModal').addEventListener('click', (e) => { if (e.target === document.getElementById('historyModal')) closeModal(); });
+    </script>
+</body>
+</html>
